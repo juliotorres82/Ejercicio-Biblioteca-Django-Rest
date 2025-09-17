@@ -7,7 +7,7 @@ class AutorSerializer(serializers.ModelSerializer):
     libros_publicados = serializers.SerializerMethodField()
     class Meta:
         model = Autor
-        fields = ["nombre", "apellido", "fecha_nacimiento", "nacionalidad", "biografia", "activo", "nombre_completo", "libros_publicados"]
+        fields = ["id","nombre", "apellido", "fecha_nacimiento", "nacionalidad", "biografia", "activo", "nombre_completo", "libros_publicados"]
     def get_nombre_completo(self, obj):
         return f"{obj.nombre} {obj.apellido}"
     def get_libros_publicados(self, obj):
@@ -18,6 +18,7 @@ class AutorSerializer(serializers.ModelSerializer):
         if value >= date.today():
             raise serializers.ValidationError("La fecha de nacimiento no puede ser en el futuro")
         return value
+    
     
 
 
