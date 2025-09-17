@@ -5,8 +5,9 @@ from biblioteca.models import Autor, Categoria, Libro, Prestamo
 from biblioteca.api.serializers import AutorSerializer, CategoriaSerializer, LibroSerializer, PrestamoSerializer
 from rest_framework import permissions
 from django.db.models import Q
-# Crud para Autor
 
+
+# Crud para Autor
 # Get y Post en una sola vista
 class AutorListCreateView(APIView):
     permission_classes = [permissions.AllowAny] # cualquiera puede ver la lista de autores y crear nuevos autores
