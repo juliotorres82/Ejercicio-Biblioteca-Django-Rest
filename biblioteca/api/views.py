@@ -77,3 +77,56 @@ class AutorDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
     
 
+    
+    # Crud para categoria 
+    # Get y Post en una sola vista
+class CategoriaListCreateView(APIView):
+    permission_classes = [permissions.AllowAny] # esto solo es para pruebas, en produccion solo admin puede crear categorias
+    def get(self, request):
+        categoria = Categoria.objects.all()
+        serializer = CategoriaSerializer(categoria, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    def post(self, request):
+        serializer = CategoriaSerializer(data=request.data)
+        if serializer.is_valid(raise_exception=True):
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+# Get, Put y Delete en una sola vista de una categoria por id
+class CategoriaDetailView(APIView):
+    permission_classes = [permissions.AllowAny] 
+    def get_object(self, id):  # obtener una categoria por id
+        try:
+            return Categoria.objects.get(id=id)
+        except Categoria.DoesNotExist:
+            return None
+    def get(self, request, id):
+        categoria = self.get_object(id) # aqui usamos el metodo get_object para obtener la categoria
+        if not categoria:
+            return Response({"error": "Categoria no encontrada"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = CategoriaSerializer(categoria) # aqui usamos el serializer para serializar la categoria
+        return Response(serializer.data, status=status.HTTP_200_OK) # devolvemos la categoria serializada
+    def put(self, request, id):
+        categoria = self.get_object(id)
+        if not categoria:
+            return Response({"error": "Categoria no encontrada"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = CategoriaSerializer(categoria, data=request.data)
+        if serializer.is_valid(raise_exception=True):
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+    def patch(self, request, id):
+        categoria = self.get_object(id)
+        if not categoria:
+            return Response({"error": "Categoria no encontrada"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = CategoriaSerializer(categoria, data=request.data, partial=True)
+        if serializer.is_valid(raise_exception=True):
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+    def delete(self, request, id):
+        categoria = self.get_object(id)
+        if not categoria:
+            return Response({"error": "Categoria no encontrada"}, status=status.HTTP_404_NOT_FOUND)
+        categoria.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+
