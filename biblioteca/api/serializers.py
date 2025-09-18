@@ -33,11 +33,11 @@ class CategoriaSerializer(serializers.ModelSerializer):
 class LibroSerializer(serializers.ModelSerializer):
     estado_legible = serializers.SerializerMethodField()
     
-    autorFK = AutorSerializer(read_only=True)
-    categoriaFK = CategoriaSerializer(read_only=True)
+    autorFK = AutorSerializer(source="autor", read_only=True)
+    categoriaFK = CategoriaSerializer(source="categoria" , read_only=True)
     class Meta:
         model = Libro
-        fields = ["titulo", "isbn", "fecha_publicacion", "numero_paginas", "descripcion", "autor", "autorFK", "categoria", "categoriaFK" ,"estado", "precio", "fecha_agregado", "estado_legible"]
+        fields = ["id","titulo", "isbn", "fecha_publicacion", "numero_paginas", "descripcion", "autor", "autorFK", "categoria", "categoriaFK" ,"estado", "precio", "fecha_agregado", "estado_legible"]
     def get_estado_legible(self, obj):
         return obj.get_estado_display()  #metodo que genera django para campos con choices solo basta con poner get_<nombre_campo>_display() y django lo reconoce
     
@@ -54,13 +54,17 @@ class LibroSerializer(serializers.ModelSerializer):
         if value < 0:
             raise serializers.ValidationError("El precio no puede ser negativo")
         return value
+    def validate_autor(self, value):
+        if not value.activo:
+            raise serializers.ValidationError("El autor debe de estar activo")
+        return value
     
-
+    
 class PrestamoSerializer(serializers.ModelSerializer):
     dias_restantes = serializers.SerializerMethodField()
     esta_vencido = serializers.SerializerMethodField()
     
-    libroFK = LibroSerializer(read_only=True)
+    libroFK = LibroSerializer(source="libro" ,read_only=True)
     class Meta:
         model = Prestamo
         fields = ["usuario", "libro", "libroFK","fecha_prestamo", "fecha_devolucion_esperada", "fecha_devolucion_real", "activo", "dias_restantes", "esta_vencido"]
