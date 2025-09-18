@@ -26,7 +26,7 @@ class CategoriaSerializer(serializers.ModelSerializer):
     total_libros = serializers.SerializerMethodField()
     class Meta:
         model = Categoria
-        fields = ["nombre", "descripcion", "total_libros"]
+        fields = ["id", "nombre", "descripcion", "total_libros"]
     def get_total_libros(self, obj):
         return obj.libro_set.count()   #aqui usamos el related_name por defecto que es el nombre del modelo en minusculas seguido de _set
     
