@@ -1,6 +1,10 @@
 from rest_framework import serializers
 from biblioteca.models import Autor, Categoria, Libro, Prestamo
 from datetime import date
+from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+
+User = get_user_model()
 
 class AutorSerializer(serializers.ModelSerializer):
     nombre_completo = serializers.SerializerMethodField()
@@ -89,6 +93,51 @@ class PrestamoSerializer(serializers.ModelSerializer):
         if value < date.today():
             raise serializers.ValidationError("La fecha de devolucion esperada no puede ser en el pasado")
         return value
-    
+
+# Registro
+
+
+class RegistroSerializer(serializers.ModelSerializer):
+    #password = serializers.CharField(write_only=True, required=True, validators=[validate_password]) #cuando termines quitas el comentario, para que funcione el de validacion de contraseña
+    password2 = serializers.CharField(write_only=True, required=True)
+
+    class Meta:
+        model = User
+        fields = ["id", "username", "email", "password", "password2"]
+
+    #comparar contraseñas para saber si usuario la escribio correctamente
+    def validate(self, data):
+        if data["password"] != data["password2"]:
+            raise serializers.ValidationError({"password": "Las contraseñas no coinciden"})
+        return data
+
+    #encriptacion
+    def create(self, validated_data):
+        validated_data.pop("password2")
+        password = validated_data.pop("password")
+        user = User(**validated_data)
+        user.set_password(password)
+        user.save()
+        return user
+
+# Usario perfil
+class PerfilSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ["id", "username", "email", "first_name", "last_name"]
+        read_only_fields = ["id","username"] #estos campos no pueden ser editados
+
+# Cambiar contraseña
+class CambiarPasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True, write_only=True)
+    new_password = serializers.CharField(required=True,  write_only=True)
+    confirm_password = serializers.CharField(required=True, write_only=True)
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs["confirm_password"]:
+            raise serializers.ValidationError({"password": "Las contraseñas no coinciden"})
+        #validate_password(attrs["new_password"])
+        
+        return attrs
     
 
