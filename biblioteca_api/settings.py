@@ -39,7 +39,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
+    "rest_framework_simplejwt.token_blacklist",
     "django_filters",
+    'drf_yasg',
     "biblioteca",
 ]
 
@@ -127,7 +129,8 @@ from datetime import timedelta
 SIMPLE_JWT = {
 'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
 'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
-'ROTATE_REFRESH_TOKENS': True,
+#'ROTATE_REFRESH_TOKENS': True, # si esta en True al hacer el refresh te da un nuevo access y otro refresh
+#"BLACKLIST_AFTER_ROTATION": True, # Para que el token de refresco anterior se agregue a la lista negra y ya no pueda ser usado
 }
 
 
@@ -147,6 +150,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = "./static/"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

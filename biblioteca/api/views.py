@@ -2,15 +2,19 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from biblioteca.models import Autor, Categoria, Libro, Prestamo
-from biblioteca.api.serializers import AutorSerializer, CategoriaSerializer, LibroSerializer, PrestamoSerializer
+from biblioteca.api.serializers import AutorSerializer, CategoriaSerializer, LibroSerializer, PrestamoSerializer, RegistroSerializer, PerfilSerializer, CambiarPasswordSerializer
 from rest_framework import permissions
 from django.db.models import Q
-
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.generics import RetrieveUpdateAPIView
+from django.contrib.auth.models import User
+from drf_yasg.utils import swagger_auto_schema
 
 # Crud para Autor
 # Get y Post en una sola vista
 class AutorListCreateView(APIView):
     permission_classes = [permissions.AllowAny] # cualquiera puede ver la lista de autores y crear nuevos autores
+    @swagger_auto_schema(responses={200: AutorSerializer})
     def get(self, request):
         autores = Autor.objects.filter(activo=True) # filtro solo autores activos
         
@@ -30,6 +34,8 @@ class AutorListCreateView(APIView):
         
         serializer = AutorSerializer(autores, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(request_body=AutorSerializer, responses={201: AutorSerializer})
     def post(self, request):
         serializer = AutorSerializer(data=request.data)
         if serializer.is_valid(raise_exception=True):
@@ -44,6 +50,8 @@ class AutorDetailView(APIView):
             return Autor.objects.get(id=id)
         except Autor.DoesNotExist:
             return None
+        
+    @swagger_auto_schema(responses={200: AutorSerializer})    
     def get(self, request, id):
         autor = self.get_object(id)
         if not autor:
@@ -52,6 +60,8 @@ class AutorDetailView(APIView):
             return Response({"error": "Autor no encontrado"}, status=status.HTTP_404_NOT_FOUND)
         serializer = AutorSerializer(autor)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(request_body=AutorSerializer ,responses={200: AutorSerializer})
     def put(self, request, id):
         autor = self.get_object(id)
         if not autor:
@@ -60,6 +70,8 @@ class AutorDetailView(APIView):
         if serializer.is_valid(raise_exception=True):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(request_body=AutorSerializer ,responses={200: AutorSerializer})
     def patch(self, request, id):
         autor = self.get_object(id)
         if not autor:
@@ -68,6 +80,8 @@ class AutorDetailView(APIView):
         if serializer.is_valid(raise_exception=True):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(responses={204: "No content"})
     def delete(self, request, id):
         autor = self.get_object(id)
         if not autor:
@@ -82,10 +96,14 @@ class AutorDetailView(APIView):
     # Get y Post en una sola vista
 class CategoriaListCreateView(APIView):
     permission_classes = [permissions.AllowAny] # esto solo es para pruebas, en produccion solo admin puede crear categorias
+    
+    @swagger_auto_schema(responses={200: CategoriaSerializer})
     def get(self, request):
         categoria = Categoria.objects.all()
         serializer = CategoriaSerializer(categoria, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(request_body=CategoriaSerializer, responses={201: CategoriaSerializer})
     def post(self, request):
         serializer = CategoriaSerializer(data=request.data)
         if serializer.is_valid(raise_exception=True):
@@ -100,12 +118,15 @@ class CategoriaDetailView(APIView):
             return Categoria.objects.get(id=id)
         except Categoria.DoesNotExist:
             return None
+ 
+    @swagger_auto_schema(responses={200: CategoriaSerializer})
     def get(self, request, id):
         categoria = self.get_object(id) # aqui usamos el metodo get_object para obtener la categoria
         if not categoria:
             return Response({"error": "Categoria no encontrada"}, status=status.HTTP_404_NOT_FOUND)
         serializer = CategoriaSerializer(categoria) # aqui usamos el serializer para serializar la categoria
         return Response(serializer.data, status=status.HTTP_200_OK) # devolvemos la categoria serializada
+    @swagger_auto_schema(request_body=CategoriaSerializer, responses={200: CategoriaSerializer})
     def put(self, request, id):
         categoria = self.get_object(id)
         if not categoria:
@@ -114,6 +135,7 @@ class CategoriaDetailView(APIView):
         if serializer.is_valid(raise_exception=True):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
+    @swagger_auto_schema(request_body=CategoriaSerializer, responses={200: CategoriaSerializer})
     def patch(self, request, id):
         categoria = self.get_object(id)
         if not categoria:
@@ -122,6 +144,8 @@ class CategoriaDetailView(APIView):
         if serializer.is_valid(raise_exception=True):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(responses={204: "No Content"})
     def delete(self, request, id):
         categoria = self.get_object(id)
         if not categoria:
@@ -133,6 +157,8 @@ class CategoriaDetailView(APIView):
     #Get y post en una sola vista
 class LibrosListCreateViev(APIView):
     permission_classes = [permissions.AllowAny] # esto solo es para pruebas se cambiara en produccion a que solo admin pueda crear libros
+    
+    @swagger_auto_schema(responses={200: LibroSerializer})
     def get(self, request):
         #libro = Libro.objects.all()
         libro = Libro.objects.select_related("autor", "categoria").order_by("id").all() # optimizar consultas con select_related para relaciones ForeignKey
@@ -200,6 +226,8 @@ class LibrosListCreateViev(APIView):
 
         serializer = LibroSerializer(libro, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(request_body=LibroSerializer, responses={201: LibroSerializer})
     def post(self, request):
         serializer = LibroSerializer(data=request.data)
         if serializer.is_valid(raise_exception=True):
@@ -214,12 +242,16 @@ class LibrosDetailView(APIView):
             return Libro.objects.get(id=id)
         except Libro.DoesNotExist:
             return None
+    
+    @swagger_auto_schema(responses={200: LibroSerializer})
     def get(self, request, id):
         libro = self.get_object(id)
         if not libro:
             return Response({"error": "Libro no encontrado"}, status=status.HTTP_404_NOT_FOUND)
         serializer = LibroSerializer(libro)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(request_body=LibroSerializer, responses={200: LibroSerializer})
     def put(self, request, id):
         libro = self.get_object(id)
         if not libro:
@@ -228,6 +260,8 @@ class LibrosDetailView(APIView):
         if serializer.is_valid(raise_exception=True):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @swagger_auto_schema(request_body=LibroSerializer, responses={200: LibroSerializer})
     def patch(self, request, id):
         libro = self.get_object(id)
         if not libro:
@@ -236,15 +270,94 @@ class LibrosDetailView(APIView):
         if serializer.is_valid(raise_exception=True):
             serializer.save() 
             return Response(serializer.data, status=status.HTTP_200_OK)
+        
+    @swagger_auto_schema(responses={204: "No Cotent"})    
     def delete(self, request, id):
         libro = self.get_object(id)
         if not libro:
             return Response({"error":"Libro no encontrado"}, status=status.HTTP_404_NOT_FOUND)
         libro.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)   
+    
+    #Registro 
+class RegisterView(APIView):
+    permission_classes = [permissions.AllowAny] #aqui si no borres este permiso para que cualquiera cree su usuario
+    
+    @swagger_auto_schema(request_body=RegistroSerializer, responses={201: RegistroSerializer})
+    def post(self, request):
+        serializer = RegistroSerializer(data= request.data)
+        if serializer.is_valid(raise_exception=True):
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+# cierre de sesion
+class LogoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated] # este si se queda porque para cerrar sesion debes tener una cuenta abierta
+    def post(self, request):
+        refresh_token =request.data.get("refresh")
+        if not refresh_token:
+            return Response({"error": "Refresh token requerido"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        except Exception:
+            return Response({"error": "Token invalido o ya caducado"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"logout": "Se ha cerrado la sesion"},status=status.HTTP_205_RESET_CONTENT)
+"""
+# usuario perfil
+class PerfilView(RetrieveUpdateAPIView): #sirve para hacer get, patch y put
+    serializer_class = PerfilSerializer
+    permission_classes =[permissions.IsAuthenticated]
 
+    def get_object(self):
+        return self.request.user
+"""
 
+#usuario perfil get, put y patch
+class PerfilView(APIView):
+    permission_classes = [permissions.IsAuthenticated] # este si se queda porque para cerrar sesion debes tener una cuenta abierta
+
+    #para que aparezca la documentacion
+    @swagger_auto_schema(responses={200: PerfilSerializer})
+    def get(self, request):
+        serializer = PerfilSerializer(request.user)
+        return Response(serializer.data)
+    @swagger_auto_schema(request_body=PerfilSerializer, responses={200: PerfilSerializer})
+    def put(self, request):
+        user = User.objects.get(id=request.user.id)
+        serializer = PerfilSerializer(user, data=request.data)
+        if serializer.is_valid(raise_exception=True):
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    @swagger_auto_schema(request_body=PerfilSerializer, responses={200: PerfilSerializer})
+    def patch(self, request):
+        user = User.objects.get(id=request.user.id)
+        serializer = PerfilSerializer(user, data=request.data, partial=True)
+        if serializer.is_valid(raise_exception=True):
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+#Post cambio de contraseña
+class CambioPasswordView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @swagger_auto_schema(request_body=CambiarPasswordSerializer, responses={201: CambiarPasswordSerializer})
+    def post(self, request):
+        serializer = CambiarPasswordSerializer(data=request.data)
+        if serializer.is_valid(raise_exception=True):
+            user = request.user
+            if not user.check_password(serializer.validated_data["old_password"]):
+                return Response({"old_password": "La contraseña actual es incorrecta"}, status=status.HTTP_400_BAD_REQUEST)
+        
+            user.set_password(serializer.validated_data["new_password"])
+            user.save()
+            return Response({"success": "Contraseña actualizada correctamente"}, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
 
     
 
