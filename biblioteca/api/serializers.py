@@ -1,8 +1,9 @@
 from rest_framework import serializers
 from biblioteca.models import Autor, Categoria, Libro, Prestamo
-from datetime import date
+from datetime import date, timedelta # para manejar tiempo y dias
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+
 
 User = get_user_model()
 
@@ -72,6 +73,7 @@ class PrestamoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Prestamo
         fields = ["usuario", "libro", "libroFK","fecha_prestamo", "fecha_devolucion_esperada", "fecha_devolucion_real", "activo", "dias_restantes", "esta_vencido"]
+        read_only_fields = ["usuario","fecha_devolucion_esperada", "fecha_devolucion_real", "activo"] #ya no puede ser escrita por el usuario
     def get_dias_restantes(self, obj):
         dias = (obj.fecha_devolucion_esperada - date.today()).days #calcula la diferencia en dias entre dos fechas
         if dias < 0:
@@ -85,17 +87,149 @@ class PrestamoSerializer(serializers.ModelSerializer):
                                                                                                   #y la fecha actual es mayor a la esperada entonces esta vencido
 
     # Validacion personalizada
-    def validate(self, data):
-        if data["fecha_devolucion_esperada"] < data["fecha_prestamo"]:
-            raise serializers.ValidationError("La fecha de devolucion esperada no puede ser anterior a la fecha de prestamo")
-        return data
+    """
     def validate_fecha_devolucion_esperada(self, value):
         if value < date.today():
             raise serializers.ValidationError("La fecha de devolucion esperada no puede ser en el pasado")
         return value
+   """ 
+    def validate(self, data):
+        #fecha devolucion no puede ser menor a fecha prestamo
+        """
+        if data["fecha_devolucion_esperada"] < data["fecha_prestamo"]:
+            raise serializers.ValidationError("La fecha de devolucion esperada no puede ser anterior a la fecha de prestamo")
+        """
+        # para que solo admin pueda seleccionar id de usuario en el prestamo
+        request = self.context.get("request")
+        usuario = self.initial_data.get("usuario")
+
+        if not request.user.is_staff:
+            data["usuario"]=request.user
+        else:
+            if usuario:
+                try:
+                    data["usuario"] = User.objects.get(id=usuario)
+                except User.DoesNotExist:
+                    raise serializers.ValidationError("El usuario especificado no existe")
+            else:
+                data["usuario"] = request.user
+
+                    
+
+
+
+        #max 3 libros por usuario
+        user = self.context["request"].user  # el usuario autenticado
+        prestamos_activos = Prestamo.objects.filter(usuario=user, activo=True).count() #cuenta cuantas veces aparece un usuario con activo en True
+    
+        if prestamos_activos >= 3:
+            raise serializers.ValidationError("Máximo 3 préstamos activos por usuario")
+        
+        #solo libros disponibles
+        libro = data["libro"]
+        if libro.estado != "disponible":
+            raise serializers.ValidationError("Solo libros disponibles pueden prestarse")
+        
+        #no prestar si hay libro vencido
+
+        usuario = data["usuario"]
+        vencido = Prestamo.objects.filter(
+            usuario = usuario,
+            activo = True,
+            fecha_devolucion_esperada__lt = date.today(), #si es menor a la fecha de hoy
+            fecha_devolucion_real__isnull = True 
+
+        ).exists()
+
+        if vencido: 
+            raise serializers.ValidationError("No se pueden prestar mas libros porque ya se vencio la fecha de devolucion del anterior libro")
+
+        
+        return data
+    
+
+    def create(self, validated_data):
+        
+        #cambia el estado del libro de disponible a prestado
+        libro = validated_data["libro"]
+        libro.estado = "prestado"
+        libro.save()
+
+        #fecha de devolucion esperada ahora sera automaticamente a los 15 dias del registro
+        validated_data["fecha_devolucion_esperada"] = date.today()+ timedelta(days=15)
+        
+        
+        return super().create(validated_data)
+
+
+#todos los validate o create deben de estar juntos porque solo se toma el ultimo metodo y los demas se sobreescriben
+"""
+    #cambia el estado de un libro de disponible a prestado
+    def create(self, validated_data):
+        libro = validated_data["libro"]
+        libro.estado = "prestado"
+        libro.save()
+        return super().create(validated_data)
+
+    #15 dias de prestamo
+    def create(self, validated_data):
+        validated_data["fecha_devolucion_esperada"] = date.today()+ timedelta(days=15)
+        return super().create(validated_data)
+""" 
+
+
+"""
+    def validate(self, data):
+        if data["fecha_devolucion_esperada"] < data["fecha_prestamo"]:
+            raise serializers.ValidationError("La fecha de devolucion esperada no puede ser anterior a la fecha de prestamo")
+        return data
+    
+    #max 3 libros por usuario
+    def validate(self, data):
+        user = self.context["request"].user  # el usuario autenticado
+        prestamos_activos = Prestamo.objects.filter(usuario=user, activo=True).count() #cuenta cuantas veces aparece un usuario con activo en True
+    
+        if prestamos_activos >= 3:
+            raise serializers.ValidationError("Máximo 3 préstamos activos por usuario")
+        return data
+    
+    #solo libros disponibles
+    def validate(self, data):
+        libro = data["libro"]
+        if libro.estado != "disponible":
+            raise serializers.ValidationError("Solo libros disponibles pueden prestarse")
+        return data
+    
+        # no prestar si hay libro vencido
+    def validate(self, data):
+        usuario = data["usuario"]
+        vencido = Prestamo.objects.filter(
+            usuario = usuario,
+            activo = True,
+            fecha_devolucion_esperada__lt = date.today(), #si es menor a la fecha de hoy
+            fecha_devolucion_real__isnull = True 
+
+        ).exists()
+
+        if vencido: 
+            raise serializers.ValidationError("No se pueden prestar mas libros porque ya se vencio la fecha de devolucion del anterior libro")
+
+        return data
+        """     
+# serializer para editar un reigistro
+class EditarPrestamoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Prestamo
+        # Campos que se pueden actualizar manualmente
+        fields = ["usuario", "libro"]
+
+#serializer simbolico para devolver libro
+class DevolverPrestamoSerializer(serializers.Serializer):
+    regresar = serializers.BooleanField(required=True, help_text="Debe ser True para confirmar la devolucion")
+
+        
 
 # Registro
-
 
 class RegistroSerializer(serializers.ModelSerializer):
     #password = serializers.CharField(write_only=True, required=True, validators=[validate_password]) #cuando termines quitas el comentario, para que funcione el de validacion de contraseña

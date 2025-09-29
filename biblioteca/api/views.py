@@ -2,13 +2,15 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from biblioteca.models import Autor, Categoria, Libro, Prestamo
-from biblioteca.api.serializers import AutorSerializer, CategoriaSerializer, LibroSerializer, PrestamoSerializer, RegistroSerializer, PerfilSerializer, CambiarPasswordSerializer
+from biblioteca.api.serializers import AutorSerializer, CategoriaSerializer, LibroSerializer, PrestamoSerializer, RegistroSerializer, PerfilSerializer, CambiarPasswordSerializer, DevolverPrestamoSerializer, EditarPrestamoSerializer
 from rest_framework import permissions
 from django.db.models import Q
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.generics import RetrieveUpdateAPIView
 from django.contrib.auth.models import User
 from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+from datetime import date, timedelta
 
 # Crud para Autor
 # Get y Post en una sola vista
@@ -361,3 +363,218 @@ class CambioPasswordView(APIView):
 
     
 
+# prestamos
+# get y post en una sola vista
+class PrestamosListCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    @swagger_auto_schema(responses={200: PrestamoSerializer})
+    def get(self, request):
+        if request.user.is_staff: #admin puede ver todo
+            prestamo = Prestamo.objects.all()
+        else:
+            prestamo = Prestamo.objects.filter(usuario=request.user)
+
+        serializer = PrestamoSerializer(prestamo, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @swagger_auto_schema(request_body=PrestamoSerializer, responses={201: PrestamoSerializer})
+    def post(self, request):
+        
+        serializer = PrestamoSerializer(data=request.data, context={"request": request})
+        if serializer.is_valid(raise_exception=True):
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+# patch para solo regresar el libro
+class DevolverPrestamosView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    @swagger_auto_schema(responses={200: DevolverPrestamoSerializer})
+    def patch(self, request, id):
+        serializer = DevolverPrestamoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        if serializer.validated_data["regresar"] is not True:
+            return Response(
+                {"error":"Debes enviar regresar=True para confirmar"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        #buscar prestamo
+        try:
+            prestamo = Prestamo.objects.get(id=id)
+        except Prestamo.DoesNotExist:
+            return Response({"error":"El registro no existe"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        #solo dueño y admin puede devolver
+        if request.user != prestamo.usuario and not request.user.is_staff:
+            return Response({"error": "no tienes permiso para devolver el libro"}, status=status.HTTP_403_FORBIDDEN)
+        
+        if prestamo.activo is False:
+            return Response({"error": "Libro ya devuelto"}, status=status.HTTP_400_BAD_REQUEST)
+
+        #Marcar devolucion
+        prestamo.fecha_devolucion_real = date.today()
+        prestamo.activo = False
+        prestamo.save()
+
+        #cambiar estado del libro
+        libro = prestamo.libro
+        libro.estado = "disponible"
+        libro.save()
+
+        # Calcular multa
+        multa = 0
+        if prestamo.fecha_devolucion_real > prestamo.fecha_devolucion_esperada:
+            dias_retraso = (prestamo.fecha_devolucion_real - prestamo.fecha_devolucion_esperada).days
+            multa = dias_retraso*5
+        if multa > 500:
+            multa = 500
+        
+        return Response({
+            "prestamo":"Ha sido devuelto",
+            "multa":multa
+        }, status=status.HTTP_200_OK)     
+
+class EditarPrestamoView(APIView):
+    permission_classes = [permissions.IsAdminUser]  # solo admin
+
+    @swagger_auto_schema(responses={200: EditarPrestamoSerializer})
+    def patch(self, request, id):
+        try:
+            prestamo = Prestamo.objects.get(id=id)
+        except Prestamo.DoesNotExist:
+            return Response({"error": "Préstamo no encontrado"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = EditarPrestamoSerializer(prestamo, data=request.data, partial=True)
+        if serializer.is_valid(raise_exception=True):
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+       
+# estadisticas
+# estadisticas individuales (solo usuario ve sus datos)
+class EstadisticasUsuarioSelfView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    @swagger_auto_schema(
+        responses={
+            200: openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "usuario": openapi.Schema(type=openapi.TYPE_STRING, example="juanito"),
+                    "prestamos_activos": openapi.Schema(type=openapi.TYPE_INTEGER, example=2),
+                    "prestamos_vencidos": openapi.Schema(type=openapi.TYPE_INTEGER, example=1),
+                    "multas_totales": openapi.Schema(type=openapi.TYPE_INTEGER, example=15),
+                }
+            )
+        }
+    )
+    def get(self, request):
+        user = request.user
+        prestamos = Prestamo.objects.filter(usuario=user)
+        activos = prestamos.filter(activo=True).count()
+        vencidos = prestamos.filter(activo=True, fecha_devolucion_esperada__lt=date.today()).count()
+        multas = 0 
+
+        for prestamo in prestamos.filter(fecha_devolucion_real__isnull=False):
+            retraso = (prestamo.fecha_devolucion_real - prestamo.fecha_devolucion_esperada).days
+            if retraso > 0:
+                multa_prestamo = retraso * 5
+                # aplicar tope por préstamo
+                if multa_prestamo > 500:
+                    multa_prestamo = 500
+                multas += multa_prestamo
+        
+        return Response({
+            "usuario": user.username,
+            "prestamos activos":activos,
+            "prestamos vencidos": vencidos,
+            "multas totales": multas
+
+        })
+
+#estadisticas individuales para admin (puede ver todas)
+class EstadisticasUsuariosAdminView(APIView):
+    permission_classes= [permissions.IsAdminUser]
+
+    @swagger_auto_schema(
+        responses={
+            200: openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "usuario": openapi.Schema(type=openapi.TYPE_STRING, example="juanito"),
+                    "prestamos_activos": openapi.Schema(type=openapi.TYPE_INTEGER, example=2),
+                    "prestamos_vencidos": openapi.Schema(type=openapi.TYPE_INTEGER, example=1),
+                    "multas_totales": openapi.Schema(type=openapi.TYPE_INTEGER, example=15),
+                }
+            )
+        }
+    )
+    def get(self, request, id):
+        try:
+            user = User.objects.get(id=id)
+        except User.DoesNotExist:
+            return Response({"error":"usuario no encontrado"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        prestamos = Prestamo.objects.filter(usuario=user)
+        activos = prestamos.filter(activo=True).count()
+        vencidos = prestamos.filter(activo=True, fecha_devolucion_esperada__lt=date.today()).count()
+        multas = 0 
+
+        for prestamo in prestamos.filter(fecha_devolucion_real__isnull=False):
+            retraso = (prestamo.fecha_devolucion_real - prestamo.fecha_devolucion_esperada).days
+            if retraso > 0:
+                multa_prestamo = retraso * 5
+                # aplicar tope por préstamo
+                if multa_prestamo > 500:
+                    multa_prestamo = 500
+                multas += multa_prestamo
+        
+        return Response({
+            "usuario": user.username,
+            "prestamos activos":activos,
+            "prestamos vencidos": vencidos,
+            "multas totales": multas
+
+        })
+    
+# estadisticas globales para admin (sumatoria de todos los usuarios)
+class EstadisticasGlobalAdminView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    @swagger_auto_schema(
+        responses={
+            200: openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    "usuario": openapi.Schema(type=openapi.TYPE_STRING, example="juanito"),
+                    "prestamos_activos": openapi.Schema(type=openapi.TYPE_INTEGER, example=2),
+                    "prestamos_vencidos": openapi.Schema(type=openapi.TYPE_INTEGER, example=1),
+                    "multas_totales": openapi.Schema(type=openapi.TYPE_INTEGER, example=15),
+                }
+            )
+        }
+    )
+
+    def get(self, request):
+        prestamos = Prestamo.objects.all()
+        activos = prestamos.filter(activo=True).count()
+        vencidos = prestamos.filter(activo=True, fecha_devolucion_esperada__lt=date.today()).count()
+        multas = 0 
+
+        for prestamo in prestamos.filter(fecha_devolucion_real__isnull=False):
+            retraso = (prestamo.fecha_devolucion_real - prestamo.fecha_devolucion_esperada).days
+            if retraso > 0:
+                multa_prestamo = retraso * 5
+                # aplicar tope por préstamo
+                if multa_prestamo > 500:
+                    multa_prestamo = 500
+                multas += multa_prestamo
+
+        return Response({
+            "prestamos_activos": activos,
+            "prestamos_vencidos": vencidos,
+            "multas_totales": multas
+        })
+    
