@@ -1,5 +1,5 @@
 from django.urls import path, include
-from biblioteca.api.views import AutorListCreateView, AutorDetailView, CategoriaListCreateView, CategoriaDetailView, LibrosListCreateViev, LibrosDetailView, RegisterView, LogoutView, PerfilView, CambioPasswordView
+from biblioteca.api.views import AutorListCreateView, AutorDetailView, CategoriaListCreateView, CategoriaDetailView, LibrosListCreateViev, LibrosDetailView, RegisterView, LogoutView, PerfilView, CambioPasswordView, PrestamosListCreateView, DevolverPrestamosView, EstadisticasUsuarioSelfView, EstadisticasGlobalAdminView, EstadisticasUsuariosAdminView, EditarPrestamoView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 urlpatterns = [
@@ -19,8 +19,15 @@ urlpatterns = [
     #perfil usuario
     path("api/auth/perfil", PerfilView.as_view(), name= "perfil"),
     #cambio contraseña
-    path("api/auth/cambiar-password/", CambioPasswordView.as_view(), name="cambio-password")
-    
+    path("api/auth/cambiar-password/", CambioPasswordView.as_view(), name="cambio-password"),
+    #prestamos
+    path("api/prestramo/", PrestamosListCreateView.as_view(), name="prestamo-list-create"),
+    path("api/prestamo/devolver/<int:id>/", DevolverPrestamosView.as_view(), name="prestamo-devolver"),
+    path("api/prestamo/<int:id>/", EditarPrestamoView.as_view(), name="prestamo-editar"),
+    #estadisticas prestamos
+    path("api/prestamo/estadistica/usuario/", EstadisticasUsuarioSelfView.as_view(), name="prestamo-estadistica-usuario"),
+    path("api/prestamo/estadistica/admin/<int:id>/", EstadisticasUsuariosAdminView.as_view(), name="prestamo-estadistica-admin-id"),
+    path("api/prestamo/estadistica/admin/", EstadisticasGlobalAdminView.as_view(), name="prestamo-estadistica-admin")
 
     
 
